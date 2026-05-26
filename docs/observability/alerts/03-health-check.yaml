@@ -1,0 +1,29 @@
+# Alerta 3 — Health check falhou
+# Critério: Synthetic monitor (ping GET /health) retorna != 200 por 2 minutos
+# Severidade: Critical
+# Setup: criar Synthetic monitor no New Relic apontando para
+#   https://<api-gateway-url>/health a cada 1 minuto
+
+name: "Oficina Mecânica — Health Check falhou"
+type: SYNTHETIC
+monitor:
+  name: oficina-mecanica-health-ping
+  type: SIMPLE
+  uri: https://<API_GATEWAY_URL>/health
+  frequency: 1m
+  locations:
+    - AWS_US_EAST_1
+    - AWS_US_WEST_2
+  validation_string: "ok"
+  verify_ssl: true
+condition:
+  threshold: 0
+  operator: above
+  threshold_duration: 120
+  threshold_occurrences: all
+severity: CRITICAL
+description: >
+  Health check `GET /health` da aplicação no EKS retornou status != 200 por
+  pelo menos 2 minutos consecutivos. Provável: pod down, RDS inacessível,
+  disco cheio, ou memória esgotada. Verificar Recursos K8s dashboard e
+  `kubectl describe pod -n auto-repair-shop`.

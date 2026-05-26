@@ -1,0 +1,72 @@
+{
+  "name": "Oficina Mecânica — Erros e Falhas",
+  "description": "Taxa de erro 5xx, top errors, falhas de integração",
+  "permissions": "PUBLIC_READ_WRITE",
+  "pages": [
+    {
+      "name": "Erros",
+      "widgets": [
+        {
+          "title": "Taxa de erros 5xx (TIMESERIES)",
+          "layout": { "column": 1, "row": 1, "width": 8, "height": 3 },
+          "visualization": { "id": "viz.line" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "query": "SELECT count(*) AS 'erros 5xx' FROM Transaction WHERE httpResponseCode >= 500 TIMESERIES SINCE 24 hours ago"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Apdex",
+          "layout": { "column": 9, "row": 1, "width": 4, "height": 3 },
+          "visualization": { "id": "viz.billboard" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "query": "SELECT apdex(duration, t: 0.5) FROM Transaction SINCE 24 hours ago"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Top 10 erros por mensagem",
+          "layout": { "column": 1, "row": 4, "width": 6, "height": 3 },
+          "visualization": { "id": "viz.table" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "query": "SELECT count(*) FROM TransactionError FACET error.message SINCE 24 hours ago LIMIT 10"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Falhas de integração (ServiceOrderError)",
+          "layout": { "column": 7, "row": 4, "width": 6, "height": 3 },
+          "visualization": { "id": "viz.bar" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "query": "SELECT count(*) FROM ServiceOrderError FACET operation SINCE 7 days ago"
+              }
+            ]
+          }
+        },
+        {
+          "title": "Auth: sucesso vs falha",
+          "layout": { "column": 1, "row": 7, "width": 12, "height": 3 },
+          "visualization": { "id": "viz.area" },
+          "rawConfiguration": {
+            "nrqlQueries": [
+              {
+                "query": "SELECT count(*) FROM AuthenticationSuccess, AuthenticationFailure FACET eventType() TIMESERIES SINCE 24 hours ago"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
