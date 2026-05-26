@@ -1,114 +1,97 @@
 # Auto Repair Shop API — Fase 3
 
-Tech Challenge **Fase 3** — Pós Tech FIAP Software Architecture (13SOAT). **Grupo 72 — Jair Nunes.**
+Tech Challenge Fase 3 — Pós Tech FIAP Software Architecture (13SOAT). Grupo 72 — Jair Nunes.
 
-API NestJS de gestão de ordens de serviço de uma oficina mecânica, evoluída da Fase 2 para arquitetura **cloud-native AWS**: 4 repositórios separados, infraestrutura como código, Function Serverless para autenticação, banco gerenciado, cluster Kubernetes e observabilidade plena.
+API NestJS de gestão de ordens de serviço de uma oficina mecânica. A Fase 3 transforma o monorepo da Fase 2 numa solução cloud-native AWS com 4 repos: aplicação, lambdas serverless, infra do banco e infra do cluster.
 
-## Repositórios da solução
+## Repos da solução
 
-| Repo | Responsabilidade |
-|---|---|
-| **repo-app** (este) | Aplicação NestJS — domínio, use-cases, controllers, observabilidade |
-| [repo-lambda-auth](https://github.com/JairNunes/repo-lambda-auth) | Lambda Auth (CPF→JWT) + Lambda Notify (SNS) + API Gateway |
-| [repo-infra-db](https://github.com/JairNunes/repo-infra-db) | Terraform — RDS PostgreSQL gerenciado |
-| [repo-infra-k8s](https://github.com/JairNunes/repo-infra-k8s) | Terraform — VPC, EKS, ECR, K8s resources |
+- **repo-app** (esse) — aplicação NestJS, domínio, use-cases, controllers, observabilidade, docs.
+- **[repo-lambda-auth](https://github.com/JairNunes/repo-lambda-auth)** — Lambda Auth (CPF → JWT) + Lambda Notify (SNS) + API Gateway via SAM.
+- **[repo-infra-db](https://github.com/JairNunes/repo-infra-db)** — Terraform do RDS PostgreSQL.
+- **[repo-infra-k8s](https://github.com/JairNunes/repo-infra-k8s)** — Terraform de VPC, EKS, ECR e recursos K8s.
 
-## Novidades vs Fase 2
+## O que mudou em relação à Fase 2
 
-| Área | Fase 2 | Fase 3 |
-|---|---|---|
-| Auth | Email/senha → JWT | Mantém + aceita JWT customer da Lambda (campo `type` no token) |
-| Health check | Probes em `/docs` | `GET /health` com `@nestjs/terminus` (DB + memória + disco) |
-| Logging | `console.log` | Winston JSON estruturado + correlation ID por request |
-| Observabilidade | — | New Relic APM + custom events + 4 dashboards + 3 alertas |
-| Banco | PostgreSQL pod no cluster | RDS PostgreSQL gerenciado (via `repo-infra-db`) |
-| Notificação | — | Após transição de status, chama Lambda Notify (HTTP fire-and-forget) → SNS → email |
-| Deploy | Artifact local | Push ECR + deploy automático no EKS via GitHub Actions |
+- Auth admin (email/senha) continua, mas o JWT carrega `type: "admin"`. Cliente pode autenticar via CPF na Lambda e recebe JWT com `type: "customer"`. Um guard combinado diferencia os dois.
+- `GET /health` substitui o `/docs` como readiness/liveness probe — usa `@nestjs/terminus` com check de DB, memória e disco.
+- Logs JSON estruturados via Winston, com `correlationId` propagado por `AsyncLocalStorage` em toda a request.
+- Após `finalize` e `deliver`, a app chama a Lambda Notify (fire-and-forget) que publica no SNS e o cliente recebe email.
+- O banco saiu do cluster (Fase 2 tinha postgres como pod) e virou RDS gerenciado.
+- New Relic APM integrado com custom events em criação/transição de OS e auth, 4 dashboards e 3 alertas.
+- CI/CD agora faz push pro ECR e deploy automático no EKS.
 
 ## Stack
 
-- **Runtime:** Node.js 20 · NestJS 10 · TypeScript 5
-- **Persistência:** Prisma 5.8 · PostgreSQL 16 (RDS)
-- **Auth:** JWT (Passport) — admin (email/senha) + customer (CPF via Lambda)
-- **Observabilidade:** New Relic APM + `nest-winston` + `@nestjs/terminus`
-- **HTTP client:** `@nestjs/axios` (notificações)
-- **Containerização:** Docker multi-stage + healthcheck embutido
-- **Orquestração:** Kubernetes (EKS) com HPA min 2 / max 10
-- **CI/CD:** GitHub Actions — build → test → push ECR → deploy EKS → marker New Relic
+- Node.js 20, NestJS 10, TypeScript 5
+- Prisma 5.8, PostgreSQL 16 (RDS)
+- JWT (Passport) admin + customer
+- `@nestjs/terminus`, `nest-winston`, `@nestjs/axios`, `newrelic`
+- Docker multi-stage com HEALTHCHECK
+- Kubernetes (EKS) com HPA
+- GitHub Actions
 
-## Arquitetura
+## Estrutura
 
 ```
 src/
-├── domain/                       # Entidades, enums, regras puras
-├── application/                  # Use-cases + ports (interfaces)
-├── infrastructure/               # Adapters (Prisma repos + config)
-├── modules/                      # NestJS modules (controllers + DTOs)
-│   ├── auth/                     # Login admin (email/senha)
-│   ├── customers/, vehicles/, services/, parts/, service-orders/
-│   ├── metrics/                  # Métricas customizadas (Fase 2)
-│   └── health/                   # GET /health (Fase 3) — terminus
-├── shared/
-│   ├── logging/
-│   │   ├── correlation-id.ts             # AsyncLocalStorage + middleware
-│   │   ├── http-logger.middleware.ts     # Loga toda request com responseTime
-│   │   └── winston.config.ts             # JSON em prod, pretty em dev
-│   ├── observability/
-│   │   └── custom-metrics.service.ts     # Wrapper de newrelic.recordCustomEvent
-│   ├── services/
-│   │   └── notification-client.ts        # POST → Lambda /notify/status-change
-│   ├── guards/
-│   │   └── combined-auth.guard.ts        # Aceita JWT admin OU customer
-│   ├── http/                              # Filter global de exceções
-│   └── validation/                        # Value objects (Document, Plate)
+├── domain/                     entidades, enums, regras
+├── application/                use-cases, ports
+├── infrastructure/             adapters Prisma, config
+├── modules/
+│   ├── auth/                   login admin
+│   ├── customers/ vehicles/ services/ parts/ service-orders/
+│   ├── metrics/                métricas customizadas (Fase 2)
+│   └── health/                 GET /health
+└── shared/
+    ├── logging/                correlation ID, Winston config, http logger
+    ├── observability/          custom metrics (New Relic)
+    ├── services/               notification client (Lambda Notify)
+    ├── guards/                 combined auth guard
+    ├── http/                   filter global
+    └── validation/             value objects
 ```
 
 ## Endpoints
 
-### Health & docs
-- `GET /health` — terminus check (DB/memória/disco)
-- `GET /docs` — Swagger
+Login admin: `POST /auth/login`.
+Login customer: `POST /auth/cpf` (rodando na Lambda).
 
-### Auth
-- `POST /auth/login` — login admin → JWT com `type: "admin"`
-- `POST /auth/cpf` — **rodando na Lambda** (`repo-lambda-auth`) → JWT com `type: "customer"`
+Admin (JWT admin):
+- `POST /admin/service-orders`
+- `GET /admin/service-orders`
+- `POST /admin/service-orders/:id/start-diagnosis`
+- `POST /admin/service-orders/:id/send-for-approval`
+- `POST /admin/service-orders/:id/approve`
+- `POST /admin/service-orders/:id/reject`
+- `POST /admin/service-orders/:id/finalize` (notifica cliente)
+- `POST /admin/service-orders/:id/deliver` (notifica cliente)
+- CRUDs: `/admin/customers`, `/admin/vehicles`, `/admin/services`, `/admin/parts`
 
-### Admin (requer JWT admin)
-- `GET/POST /admin/customers`, `/admin/vehicles`, `/admin/services`, `/admin/parts`
-- `POST /admin/service-orders` — criar OS (dispara custom event `ServiceOrderCreated` no New Relic)
-- `GET /admin/service-orders` — listar ativas
-- `POST /admin/service-orders/:id/start-diagnosis` — Received → InDiagnosis
-- `POST /admin/service-orders/:id/send-for-approval` — InDiagnosis → AwaitingApproval
-- `POST /admin/service-orders/:id/approve` — AwaitingApproval → InExecution
-- `POST /admin/service-orders/:id/reject` — AwaitingApproval → InDiagnosis
-- `POST /admin/service-orders/:id/finalize` — InExecution → Finalized + notifica cliente
-- `POST /admin/service-orders/:id/deliver` — Finalized → Delivered + notifica cliente
-
-### Públicas
+Públicas:
 - `GET /service-orders/:id/status?customerDocument=CPF`
 - `POST /service-orders/:id/external-update`
 
+Operacional:
+- `GET /health` — terminus
+- `GET /docs` — Swagger
+
 ## Correlation ID
 
-Toda request passa pelo `CorrelationIdMiddleware`:
+Toda request passa pelo `CorrelationIdMiddleware`: lê o header `X-Correlation-ID` (se vier) ou gera UUID v4, guarda em `AsyncLocalStorage` e devolve no response header. Winston e custom events do New Relic puxam automaticamente — não precisa passar como argumento em lugar nenhum.
 
-1. Lê header `X-Correlation-ID` (se vier) ou gera UUIDv4
-2. Armazena em `AsyncLocalStorage`
-3. Devolve no response header `X-Correlation-ID`
-4. Todo log Winston e custom event do New Relic carregam o `correlationId` automaticamente
-
-## Como rodar local
+## Rodando local
 
 ```bash
 cp .env.example .env
-# preencher DATABASE_URL, JWT_SECRET, etc.
+# preencher DATABASE_URL, JWT_SECRET etc.
 
 npm install
 npx prisma migrate deploy
 npm run start:dev
 ```
 
-Acesse [http://localhost:3000/docs](http://localhost:3000/docs).
+Acesse http://localhost:3000/docs.
 
 ## Testes
 
@@ -126,42 +109,45 @@ docker run -p 3000:3000 --env-file .env oficina-mecanica-api:latest
 
 ## Deploy
 
-Push em `main` → GitHub Actions:
+Push em `main` dispara o CI/CD:
 
-1. **build-and-test** — npm ci, prisma migrate, lint, test, build
-2. **docker-build-and-push** — build, tag (`$SHA` + `latest`), push para ECR
-3. **deploy-eks** — `aws eks update-kubeconfig` → `envsubst` nos manifests → `kubectl apply` → `kubectl rollout status` → marker no New Relic
+1. `build-and-test` — `npm ci`, prisma migrate, lint, test, build.
+2. `docker-build-and-push` — build da imagem, tag (`$SHA` e `latest`), push pro ECR.
+3. `deploy-eks` — `aws eks update-kubeconfig`, `envsubst` nos manifests, `kubectl apply`, `kubectl rollout status`, deployment marker no New Relic.
 
-**Secrets necessários no repo:** `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `NEW_RELIC_API_KEY`, `NEW_RELIC_APP_ID`.
+Secrets necessários: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `NEW_RELIC_API_KEY`, `NEW_RELIC_APP_ID`.
 
-## Documentação técnica
+## Documentação
 
-Toda a documentação Fase 3 está em [`docs/`](docs/):
+Toda em `docs/`:
 
-- [`docs/architecture/components.md`](docs/architecture/components.md) — Diagrama de Componentes
-- [`docs/architecture/sequence-auth-cpf.md`](docs/architecture/sequence-auth-cpf.md) — Sequência: Autenticação CPF
-- [`docs/architecture/sequence-create-os.md`](docs/architecture/sequence-create-os.md) — Sequência: Abertura de OS
-- [`docs/architecture/er-diagram.md`](docs/architecture/er-diagram.md) — Diagrama ER com justificativa
-- [`docs/rfcs/`](docs/rfcs/) — RFC-001 Cloud · RFC-002 Auth · RFC-003 Observabilidade
-- [`docs/adrs/`](docs/adrs/) — ADR-001 Comunicação · ADR-002 HPA · ADR-003 API Gateway
-- [`docs/observability/`](docs/observability/) — Dashboards (NRQL) e alertas New Relic
+- Arquitetura: `docs/architecture/` (componentes, sequências, ER)
+- RFCs: `docs/rfcs/` (cloud, auth, observabilidade)
+- ADRs: `docs/adrs/` (comunicação, HPA, API Gateway)
+- Observabilidade: `docs/observability/` (dashboards, alertas, K8s integration, queries)
 
 ## Postman
 
-Coleção em [`postman/`](postman/) — importar no Postman, configurar variável `baseUrl`.
+Coleção em `postman/`. Importar e configurar a variável `baseUrl`.
 
 ## Credenciais default (dev)
 
-- **Admin:** `admin@oficina.com` / `Oficina@2024`
+Admin: `admin@oficina.com` / `Oficina@2024`.
+
+## Smoke test
+
+```bash
+API_BASE=https://<api-gw>.execute-api.us-east-1.amazonaws.com/prod \
+ADMIN_EMAIL=admin@oficina.com \
+ADMIN_PASSWORD=Oficina@2024 \
+CUSTOMER_CPF=<cpf-cadastrado> \
+./scripts/e2e-smoke.sh
+```
 
 ## Branch protection
 
-`main`: PR obrigatório, sem commits diretos, status checks `build-and-test`.
-
-## Vídeo
-
-Link: a definir.
+`main` protegida — PR obrigatório, sem commit direto.
 
 ## Colaborador FIAP
 
-Usuário `soat-architecture` adicionado como collaborator nos 4 repos.
+Usuário `soat-architecture` convidado em todos os 4 repos.

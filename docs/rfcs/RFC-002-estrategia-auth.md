@@ -1,108 +1,29 @@
 # RFC-002 — Estratégia de autenticação por CPF
 
-| Campo | Valor |
-|---|---|
-| **Status** | Aceita |
-| **Data** | 2026-05 |
-| **Autor** | Jair Nunes |
+Status: aceita
+Data: 05/2026
+Autor: Jair Nunes
 
 ## Contexto
 
-O PDF da Fase 3 exige uma **Function Serverless para autenticação por CPF**. A Fase 2 já tem auth por email/senha (admin) com Passport + JWT. A nova auth precisa:
+O PDF exige uma function serverless pra autenticar cliente por CPF. A Fase 2 já tem login admin via email/senha com Passport e JWT. A nova auth precisa receber o CPF, validar, checar se o cliente existe no banco e devolver um token. E precisa coexistir com a auth admin que já está rodando.
 
-- Receber CPF do cliente
-- Validar o CPF
-- Verificar se o cliente existe no banco
-- Retornar um token de acesso para chamar a API
+## Opções consideradas
 
-E precisa **coexistir** com a auth admin já existente.
+**Lambda standalone que emite JWT.** O cliente envia CPF, a Lambda valida, consulta a tabela `Customer` no RDS e assina um JWT com o mesmo `JWT_SECRET` que a app principal usa. O payload carrega `type: "customer"` pra diferenciar de admin.
 
-## Alternativas
+**Lambda + AWS Cognito.** Cognito gera o token; a Lambda funciona como custom auth challenge pra validar o CPF antes do Cognito liberar. Mais robusto mas adiciona user pool, identity pool, app clients e hosted UI pra gerenciar.
 
-### A. Lambda standalone retornando JWT
-
-```
-Cliente → API Gateway → Lambda → RDS → JWT
-                          ↓
-                  jsonwebtoken.sign({ sub, cpf, type: "customer" })
-```
-
-Mesmo `JWT_SECRET` da app principal. O guard combinado da app verifica o `type` no payload e diferencia admin vs customer.
-
-### B. Lambda + AWS Cognito User Pool
-
-```
-Cliente → API Gateway → Lambda (custom auth challenge) → Cognito → JWT
-```
-
-Cognito gera o JWT. Lambda faz custom auth challenge para validar CPF.
-
-### C. Lambda como API Gateway Authorizer
-
-```
-Cliente → API Gateway → Authorizer Lambda → contexto
-```
-
-Lambda funcionaria como Lambda Authorizer (REQUEST type), validando o JWT a cada chamada. Não emite token — apenas autoriza.
+**Lambda Authorizer (REQUEST type).** A Lambda vira authorizer do API Gateway — recebe o token a cada request e diz se autoriza ou não. Não emite token nenhum.
 
 ## Decisão
 
-**Escolhido: A — Lambda standalone retornando JWT.**
+Lambda standalone emitindo JWT. Cognito é overkill aqui — não tem MFA, não tem confirmação por email, não tem hosted UI no escopo. O ROI de Cognito num projeto acadêmico é negativo: ganha complexidade, perde clareza. Lambda Authorizer só autoriza, não emite token, e o PDF parece esperar emissão de token serverless.
 
-### Motivos
+Compartilhar o `JWT_SECRET` entre app e Lambda é o que faz tudo encaixar sem ginástica. A app já valida JWT no Passport; basta estender a strategy pra extrair o campo `type` do payload. Um guard combinado (`CombinedAuthGuard`) lê o `type` e decide se a rota aceita admin, customer ou ambos. Default é admin pra preservar o comportamento da Fase 2.
 
-1. **Simplicidade ganha ao não usar Cognito.** Cognito é poderoso mas pesado: gerenciamento de user pool, identity pool, app clients, hosted UI, MFA opcional. Para o escopo acadêmico (cliente faz login só pelo CPF, sem confirmação de email/MFA), Cognito é overkill.
-2. **Mesma chave de assinatura JWT** facilita a verificação pela app principal — basta importar o `jsonwebtoken` e o `JWT_SECRET`.
-3. **Lambda Authorizer (opção C) não emite token** — só autoriza chamadas. Como o PDF pede "soluções serverless para autenticação", interpretamos como necessidade de emissão.
-4. **Custo: opção A é a mais barata.** Cognito tem custo após 50k MAU (gratuito até lá), mas o overhead operacional + complexidade são maiores que o benefício.
-
-## Trade-offs
-
-### Sem refresh token, sem MFA
-
-O JWT tem 24h de validade. Após esse período, cliente precisa enviar CPF novamente. Aceitável para o caso de uso (oficina mecânica não precisa de session longeva nem MFA).
-
-### Sem confirmação de identidade
-
-Lambda só checa se o CPF existe no banco. Qualquer um que conheça o CPF de um cliente cadastrado pode gerar JWT. **Em produção real**, adicionaríamos:
-
-- SMS/email OTP
-- Confirmação por link mágico
-- Rate limiting por CPF no API Gateway
-
-No contexto acadêmico, decisão é deliberada.
-
-### JWT secret compartilhado
-
-App principal e Lambda compartilham o mesmo `JWT_SECRET`. Rotação afeta os dois. Em produção, considerar:
-
-- KMS para assinar/verificar (asymmetric)
-- Cognito (que gerencia rotação)
-- JWKS endpoint
-
-## Decisão complementar — diferenciação admin vs customer
-
-JWT payload tem campo `type`:
-
-```json
-{ "sub": "uuid", "cpf": "11144477735", "type": "customer", "iat": 1, "exp": 2 }
-```
-
-App principal usa `CombinedAuthGuard` ([`src/shared/guards/combined-auth.guard.ts`](../../src/shared/guards/combined-auth.guard.ts)):
-
-- Default: rota só aceita `type: "admin"`
-- Decorator `@AllowUserTypes('admin', 'customer')` libera ambos
-- Decorator `@AllowUserTypes('customer')` libera só customer (futuro: portal do cliente)
+Não tem refresh token nem MFA. Token expira em 24h e o cliente envia o CPF de novo. Em produção real, eu mandaria SMS/OTP antes de emitir o token e adicionaria rate limit no API Gateway por CPF — mas isso fica explicitamente fora do escopo.
 
 ## Consequências
 
-- `repo-lambda-auth` ganha 2 endpoints (auth + notify) — boa coesão (ambos são "serverless do projeto")
-- App principal ganha guard + jwt.strategy estendida para extrair `type`
-- README dos 4 repos documenta o fluxo de auth
-- Diagrama de sequência em [`sequence-auth-cpf.md`](../architecture/sequence-auth-cpf.md)
-
-## Referências
-
-- [JWT RFC 7519](https://datatracker.ietf.org/doc/html/rfc7519)
-- [NestJS Passport JWT](https://docs.nestjs.com/recipes/passport)
-- [AWS Lambda Authorizer types](https://docs.aws.amazon.com/apigateway/latest/developerguide/apigateway-use-lambda-authorizer.html)
+A app principal ganha o `CombinedAuthGuard` em `src/shared/guards/` e a `jwt.strategy.ts` extrai mais um campo do payload. O `auth.service.ts` da Fase 2 passa a assinar token com `type: "admin"` pra coerência. A Lambda mora no `repo-lambda-auth` junto com a Lambda Notify — boa coesão (ambas são "serverless do projeto"). O secret é gerenciado no GitHub Secrets dos dois repos. Rotação requer atualizar nos dois lugares. Pra produção, considerar KMS (assimétrico) ou JWKS endpoint.

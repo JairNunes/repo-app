@@ -1,5 +1,4 @@
-// New Relic agent precisa ser carregado ANTES de qualquer outro require.
-// Em produção é injetado via `node -r newrelic dist/main`. Em dev/test, opcional.
+// newrelic precisa carregar antes de tudo.
 if (process.env.NEW_RELIC_LICENSE_KEY) {
   try {
     require('newrelic');

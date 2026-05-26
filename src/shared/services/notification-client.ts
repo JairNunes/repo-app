@@ -28,10 +28,6 @@ export class NotificationClient {
     this.endpoint = this.config.get<string>('NOTIFY_LAMBDA_URL') || '';
   }
 
-  /**
-   * Fire-and-forget — não bloqueia o use-case. Se a Lambda estiver fora,
-   * só loga warning e segue. Retorna void de propósito.
-   */
   notifyStatusChange(payload: StatusChangePayload): void {
     if (!this.endpoint) {
       this.logger.warn('NOTIFY_LAMBDA_URL not configured, skipping notification', {

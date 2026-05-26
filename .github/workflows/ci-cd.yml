@@ -1,4 +1,4 @@
-name: CI/CD — repo-app
+name: ci-cd
 
 on:
   push:
@@ -19,7 +19,6 @@ env:
 
 jobs:
   build-and-test:
-    name: build + test
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -62,7 +61,6 @@ jobs:
           retention-days: 5
 
   docker-build-and-push:
-    name: docker build + push ECR
     runs-on: ubuntu-latest
     needs: build-and-test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -78,22 +76,19 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - uses: aws-actions/amazon-ecr-login@v2
         id: ecr-login
-      - name: Meta
-        id: meta
+      - id: meta
         run: |
           TAG="${{ github.sha }}"
           URI="${{ steps.ecr-login.outputs.registry }}/${{ env.ECR_REPOSITORY }}"
           echo "image-tag=$TAG" >> $GITHUB_OUTPUT
           echo "image-uri=$URI" >> $GITHUB_OUTPUT
-      - name: Build and push
-        run: |
+      - run: |
           docker build -t ${{ steps.meta.outputs.image-uri }}:${{ steps.meta.outputs.image-tag }} \
                        -t ${{ steps.meta.outputs.image-uri }}:latest .
           docker push ${{ steps.meta.outputs.image-uri }}:${{ steps.meta.outputs.image-tag }}
           docker push ${{ steps.meta.outputs.image-uri }}:latest
 
   deploy-eks:
-    name: deploy to EKS
     runs-on: ubuntu-latest
     needs: docker-build-and-push
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -106,11 +101,9 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
-      - name: Update kubeconfig
-        run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
+      - run: aws eks update-kubeconfig --name ${{ env.EKS_CLUSTER }} --region ${{ env.AWS_REGION }}
 
-      - name: Render manifests with image tag
-        env:
+      - env:
           ECR_REPOSITORY_URL: ${{ needs.docker-build-and-push.outputs.image-uri }}
           IMAGE_TAG: ${{ needs.docker-build-and-push.outputs.image-tag }}
         run: |
@@ -119,19 +112,16 @@ jobs:
             envsubst < "$f" > "k8s-rendered/$(basename $f)"
           done
 
-      - name: Apply manifests
-        run: |
+      # secret.yaml vem do repo-infra-k8s
+      - run: |
           kubectl apply -f k8s-rendered/namespace.yaml
           kubectl apply -f k8s-rendered/configmap.yaml
           kubectl apply -f k8s-rendered/app-deployment.yaml
           kubectl apply -f k8s-rendered/hpa.yaml
-          # secret.yaml NÃO é aplicado pelo CI — gerenciado pelo terraform repo-infra-k8s
 
-      - name: Wait for rollout
-        run: kubectl rollout status deployment/auto-repair-shop-api -n ${{ env.K8S_NAMESPACE }} --timeout=180s
+      - run: kubectl rollout status deployment/auto-repair-shop-api -n ${{ env.K8S_NAMESPACE }} --timeout=180s
 
-      - name: New Relic deployment marker
-        if: ${{ secrets.NEW_RELIC_API_KEY != '' }}
+      - if: ${{ secrets.NEW_RELIC_API_KEY != '' }}
         run: |
           curl -X POST "https://api.newrelic.com/v2/applications/${{ secrets.NEW_RELIC_APP_ID }}/deployments.json" \
             -H "X-Api-Key: ${{ secrets.NEW_RELIC_API_KEY }}" \

@@ -1,7 +1,7 @@
 {
   "name": "auto-repair-shop-api",
   "version": "2.0.0",
-  "description": "Auto repair shop management API (FIAP Tech Challenge - Fase 3)",
+  "description": "Auto repair shop API",
   "private": true,
   "license": "MIT",
   "scripts": {

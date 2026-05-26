@@ -1,109 +1,73 @@
-# Diagrama de Sequência — Abertura de Ordem de Serviço
+# Sequência — Abertura de ordem de serviço
 
-Fluxo completo do `POST /admin/service-orders`. Cobre criação + métricas + log estruturado.
+Fluxo do `POST /admin/service-orders`, com middleware de correlation ID, guard e custom event.
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor A as Admin
     participant GW as API Gateway
-    participant App as NestJS Pod (EKS)
     participant Mid as CorrelationIdMiddleware
     participant Guard as CombinedAuthGuard
     participant UC as CreateServiceOrderUseCase
     participant DB as RDS PostgreSQL
     participant NR as New Relic
-    participant W as Winston Logger
+    participant W as Winston
 
-    A->>GW: POST /admin/service-orders<br/>Authorization: Bearer eyJ...<br/>X-Correlation-ID: opcional
-    GW->>App: HTTP proxy via NLB
-
-    App->>Mid: middleware chain
-    Mid->>Mid: lê header X-Correlation-ID<br/>ou gera UUID v4
+    A->>GW: POST /admin/service-orders<br/>Bearer eyJ... · X-Correlation-ID: opcional
+    GW->>Mid: HTTP proxy via NLB
+    Mid->>Mid: lê header ou gera UUID v4
     Mid->>Mid: AsyncLocalStorage.run({ correlationId })
-    Mid->>App: setHeader response
-
-    App->>Guard: canActivate(context)
-    Guard->>Guard: validateJWT(token)<br/>extrair {sub, type}
-    Guard->>Guard: check @AllowUserTypes — default admin
+    Mid->>Mid: setHeader response
+    Mid->>Guard: canActivate
+    Guard->>Guard: validateJWT + extrair {sub, type}
+    Guard->>Guard: check @AllowUserTypes (default admin)
     Guard->>Mid: store userId, userType
 
-    App->>UC: execute({ customerDocument, vehicle, ... })
+    Guard->>UC: execute({ customerDocument, vehicle, ... })
 
-    UC->>DB: SELECT Customer WHERE document
-    alt customer existe
-        DB-->>UC: customer
-    else customer não existe
-        UC->>DB: INSERT Customer
-        DB-->>UC: customer
+    UC->>DB: SELECT/INSERT Customer
+    UC->>DB: SELECT/INSERT Vehicle
+    loop services
+        UC->>DB: SELECT Service
     end
-
-    UC->>DB: SELECT Vehicle WHERE customerId + plate
-    alt vehicle existe
-        DB-->>UC: vehicle
-    else vehicle não existe
-        UC->>DB: INSERT Vehicle
-        DB-->>UC: vehicle
+    loop parts
+        UC->>DB: SELECT Part
     end
-
-    loop cada service
-        UC->>DB: SELECT Service WHERE id
-        DB-->>UC: service (priceCents snapshot)
-    end
-
-    loop cada part
-        UC->>DB: SELECT Part WHERE id
-        DB-->>UC: part (priceCents snapshot)
-    end
-
-    UC->>DB: INSERT ServiceOrder<br/>(status: Received)<br/>+ snapshots services & parts
+    UC->>DB: INSERT ServiceOrder + snapshots
     DB-->>UC: serviceOrder
 
-    UC->>NR: recordCustomEvent("ServiceOrderCreated", {<br/>  serviceOrderId, customerId,<br/>  status, totalCents, correlationId<br/>})
+    UC->>NR: recordCustomEvent("ServiceOrderCreated", {<br/>  serviceOrderId, customerId, status, totalCents<br/>})
 
-    UC-->>App: serviceOrder
-    App->>W: log.info("Service order created", {<br/>  correlationId, serviceOrderId,<br/>  customerId, statusCode: 201,<br/>  responseTime<br/>})
-    W->>NR: forward log (application_logging)
-    App-->>GW: 201 + JSON { serviceOrder }
-    GW-->>A: 201
+    UC-->>Mid: serviceOrder
+    Mid->>W: log.info("HTTP request completed", {<br/>  correlationId, method, path, statusCode, responseTime<br/>})
+    W->>NR: forward (application_logging)
+    Mid-->>GW: 201 + JSON
+    GW-->>A: 201 · X-Correlation-ID
 ```
 
-## Atributos da request
+Toda request passa pelo `CorrelationIdMiddleware` primeiro. Se vier `X-Correlation-ID` no header, ele é reutilizado (propagação entre serviços); caso contrário, gera UUID v4. O ID fica no `AsyncLocalStorage` durante todo o ciclo, então Winston e custom events do New Relic capturam automaticamente sem ter que passar nada como parâmetro.
 
-| Header / Body | Valor exemplo |
-|---|---|
-| `Authorization` | `Bearer eyJhbGciOi...` (JWT admin) |
-| `X-Correlation-ID` | `7b4a2cf2-9d3b-4a1e-8e51-3c6b9d1f0a22` (opcional na request; sempre retornado na response) |
-| Body | `{ "customerDocument": "111.444.777-35", "vehicle": { "plate": "ABC1234", ... }, "serviceIds": [...] }` |
+O `CombinedAuthGuard` estende o `AuthGuard('jwt')` do Passport. Depois da validação padrão, lê o `@AllowUserTypes` da rota e decide. Default sem decorator é só admin — preserva o comportamento da Fase 2 sem precisar tocar nos controllers existentes.
 
-## Side effects no New Relic
-
-- 1 Transaction APM (`POST /admin/service-orders`)
-- 1 Custom Event `ServiceOrderCreated`
-- 1-N entradas de Log (Winston → application_logging forwarding)
-- Distributed Tracing automático cobre DB calls
-
-## Transição de status disparando Notify Lambda
-
-`POST /admin/service-orders/:id/finalize` segue o mesmo padrão, mas adicionalmente:
+Cada transição de status posterior (`/start-diagnosis`, `/finalize` etc.) emite outro custom event `ServiceOrderStatusChanged`. Os use-cases de `finalize` e `deliver` adicionalmente chamam a Lambda Notify:
 
 ```mermaid
 sequenceDiagram
-    participant App as NestJS Pod
+    participant App as NestJS
     participant NC as NotificationClient
     participant LN as Lambda Notify
     participant SNS as SNS Topic
 
-    Note over App: após updateStatus(Finalized)
-
+    Note over App: depois de updateStatus(Finalized)
     App->>NC: notifyStatusChange(payload)
-    NC->>NC: getCorrelationId() + headers
-    NC-)LN: POST /notify/status-change<br/>(fire-and-forget, timeout 3s)
+    NC->>NC: getCorrelationId + headers
+    NC-)LN: POST /notify/status-change (timeout 3s)
     LN->>LN: validate fields
-    LN->>SNS: publish message
+    LN->>SNS: publish
     SNS-->>LN: messageId
     LN-->>NC: 200 { sent: true } (ignorado)
-    Note over App: response 200 ao admin já foi enviada
+    Note over App: response 201 já foi enviada ao admin
 ```
 
-A chamada para a Lambda é **assíncrona** (RxJS `firstValueFrom` sem await). Se a Lambda estiver down ou demorar, a response ao admin não é bloqueada. Falha é apenas logada.
+A chamada à Lambda Notify usa RxJS sem `await` (fire-and-forget). Se a Lambda demorar ou cair, o `catchError` loga warning e o fluxo do admin não trava. Falha vira métrica `ServiceOrderError` no New Relic, que é parte do alerta de falha em OS.

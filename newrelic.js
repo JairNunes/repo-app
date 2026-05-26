@@ -1,9 +1,5 @@
 'use strict';
 
-/**
- * New Relic agent configuration.
- * License key vem da env var NEW_RELIC_LICENSE_KEY.
- */
 exports.config = {
   app_name: [process.env.NEW_RELIC_APP_NAME || 'oficina-mecanica-api'],
   license_key: process.env.NEW_RELIC_LICENSE_KEY,

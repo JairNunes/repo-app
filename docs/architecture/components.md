@@ -1,6 +1,6 @@
-# Diagrama de Componentes — Fase 3
+# Diagrama de componentes
 
-Visão arquitetural completa da solução cloud-native na AWS.
+Visão completa da arquitetura cloud na AWS.
 
 ```mermaid
 flowchart TB
@@ -8,7 +8,7 @@ flowchart TB
         C[Cliente / Postman / Browser]
     end
 
-    subgraph AWS["AWS Cloud — us-east-1"]
+    subgraph AWS["AWS · us-east-1"]
         subgraph APIGW["API Gateway HTTP API"]
             R1["/auth/cpf"]
             R2["/notify/status-change"]
@@ -17,38 +17,36 @@ flowchart TB
 
         subgraph LambdaStack["repo-lambda-auth"]
             LA["Lambda Auth<br/>Node.js 20<br/>CPF → JWT"]
-            LN["Lambda Notify<br/>Node.js 20<br/>SNS publisher"]
-            SNS[("SNS Topic<br/>oficina-notifications")]
-            EMAIL["Subscription<br/>(email)"]
+            LN["Lambda Notify<br/>Node.js 20"]
+            SNS[("SNS Topic")]
+            EMAIL["Subscription email"]
         end
 
-        subgraph EKS["EKS Cluster — repo-infra-k8s"]
+        subgraph EKS["EKS · repo-infra-k8s"]
             direction TB
             NS["Namespace<br/>auto-repair-shop"]
             subgraph Pods["App pods (HPA 2-10)"]
-                APP1["NestJS pod<br/>+ Winston JSON<br/>+ New Relic Agent<br/>+ Correlation ID"]
-                APP2["NestJS pod"]
+                APP1["NestJS<br/>Winston JSON · NR Agent · Correlation ID"]
+                APP2["NestJS"]
             end
-            HPA["HPA<br/>CPU 70% · MEM 80%"]
-            NLB["NLB Service"]
+            HPA["HPA — CPU 70% / MEM 80%"]
+            NLB["NLB"]
         end
 
         subgraph DB["repo-infra-db"]
-            RDS[("RDS PostgreSQL 16<br/>db.t3.micro<br/>schema Prisma")]
-            SM["Secrets Manager<br/>DATABASE_URL"]
+            RDS[("RDS PostgreSQL 16<br/>db.t3.micro")]
+            SM["Secrets Manager"]
         end
 
-        subgraph CI["CI/CD GitHub Actions"]
-            ECR[("ECR repository<br/>oficina-mecanica-eks-app")]
-        end
+        ECR[("ECR")]
     end
 
-    subgraph NR["New Relic SaaS"]
-        APM["APM<br/>latência · throughput · erros"]
-        LOGS["Logs<br/>(JSON estruturado)"]
-        EVENTS["Custom Events<br/>ServiceOrderCreated etc"]
-        DASH["Dashboards<br/>Volume · Tempo · Erros · K8s"]
-        ALERT["3 Alertas<br/>Falha OS · Latência · Health"]
+    subgraph NR["New Relic"]
+        APM["APM"]
+        LOGS["Logs JSON"]
+        EVENTS["Custom Events"]
+        DASH["Dashboards"]
+        ALERT["Alertas"]
     end
 
     C -->|HTTPS| APIGW
@@ -56,22 +54,19 @@ flowchart TB
     R2 --> LN
     R3 -->|HTTP proxy| NLB
     NLB --> Pods
-    LA -->|pg query| RDS
+    LA -->|pg| RDS
     LA -.->|reads| SM
     Pods -->|Prisma| RDS
     Pods -.->|reads| SM
-    Pods -->|fire-and-forget POST| R2
+    Pods -->|POST fire-and-forget| R2
     LN --> SNS
     SNS --> EMAIL
     HPA -.->|scales| Pods
-
     Pods -->|APM + logs| APM
-    Pods -.->|logs| LOGS
-    Pods -.->|custom events| EVENTS
+    Pods -.-> LOGS
+    Pods -.-> EVENTS
     EVENTS --> DASH
     APM --> ALERT
-    LOGS --> DASH
-
     ECR -->|image pull| Pods
 
     style RDS fill:#cce5ff
@@ -83,39 +78,29 @@ flowchart TB
     style APIGW fill:#fff4cc
 ```
 
-## Componentes principais
+## Componentes
 
-| Componente | Tipo | Owner Repo | Detalhe |
-|---|---|---|---|
-| **API Gateway HTTP API** | Camada de roteamento | `repo-lambda-auth` (via SAM) | Ponto único de entrada; CORS aberto; tracing X-Ray |
-| **Lambda Auth** | Function serverless | `repo-lambda-auth` | `POST /auth/cpf` — valida CPF, consulta `Customer` no RDS, emite JWT (24h, `type: "customer"`) |
-| **Lambda Notify** | Function serverless | `repo-lambda-auth` | `POST /notify/status-change` — publica mensagem no SNS Topic |
-| **SNS Topic** | Pub/sub | `repo-lambda-auth` (SAM) | Subscription de email enviando alerta ao cliente quando OS muda de status |
-| **EKS Cluster** | Orquestrador K8s | `repo-infra-k8s` | 2 AZ, node group `t3.medium` min 2 / max 4, VPC privada |
-| **App NestJS** | Aplicação | `repo-app` | Domain · Use cases · Controllers · Health · Logging JSON · Combined Auth Guard · Notification Client |
-| **HPA** | Autoscaler | `repo-infra-k8s` | min 2 / max 10 pods · CPU 70% · MEM 80% |
-| **RDS PostgreSQL** | Banco gerenciado | `repo-infra-db` | `db.t3.micro` · 20GB gp3 · backups 7 dias · Multi-AZ off |
-| **Secrets Manager** | Secrets | `repo-infra-db` (SAM gerencia consumption) | Guarda DATABASE_URL serializado |
-| **ECR** | Container registry | `repo-infra-k8s` (criado dentro do módulo eks) | Image lifecycle: 10 últimas tags |
-| **New Relic** | Observability SaaS | (externo) | APM · Logs · Events · 4 Dashboards · 3 Alertas · K8s integration |
+O **API Gateway HTTP API** é o ponto único de entrada e mora no `repo-lambda-auth` via SAM template. Roteia `/auth/cpf` e `/notify/status-change` pras Lambdas (AWS_PROXY) e as outras rotas pro NLB do EKS (HTTP_PROXY).
 
-## Fluxo de dependências
+A **Lambda Auth** recebe o CPF, valida (algoritmo de dígitos verificadores), consulta a tabela `Customer` no RDS e devolve um JWT com `type: "customer"` válido por 24h. Conexão com Postgres via `pg`, sem ORM — query única, não justifica Prisma.
 
-```
-repo-infra-db   (cria RDS, exporta DATABASE_URL)
-        │
-        ├─── repo-lambda-auth   (Lambdas usam DATABASE_URL)
-        │
-        └─── repo-infra-k8s     (App usa DATABASE_URL via ConfigMap/Secret)
-                │
-                └─── repo-app   (image pull do ECR, deploy via kubectl apply)
-```
+A **Lambda Notify** recebe payload com status anterior/novo, monta a mensagem em PT-BR e publica num SNS Topic. A subscription do tópico encaminha pra email — em produção viraria fila SQS pra integrar com CRM, mas no escopo é email direto.
 
-## Fronteiras de segurança
+O **EKS cluster** roda em 2 AZ com node group `t3.medium` (min 2, max 4). Os pods da app têm HPA configurado pra escalar entre 2 e 10 réplicas. A imagem é puxada do ECR criado dentro do módulo `eks` do Terraform.
 
-- API Gateway → Lambda: integração nativa AWS (mesma conta)
-- API Gateway → EKS NLB: HTTP integration via NLB DNS
-- Lambda → RDS: VPC Configuration (subnets privadas) + Security Group restrito
-- Pods → RDS: Security Group permite tráfego só do CIDR da VPC
-- Pods → Lambda Notify: HTTPS público (mesmo API Gateway) — fire-and-forget
-- Cliente → API Gateway: HTTPS público, sem autenticação na borda (cada handler valida o JWT)
+A **app NestJS** continua basicamente a Fase 2, com Clean Architecture e Prisma. As adições são `/health` (terminus), Winston JSON com correlation ID, `CombinedAuthGuard` que aceita JWT admin ou customer, e o `NotificationClient` que chama a Lambda Notify de forma assíncrona após cada transição de status. O agent do New Relic carrega antes do bootstrap (`node -r newrelic`).
+
+O **RDS PostgreSQL 16** roda em `db.t3.micro` com 20GB gp3, backup automático de 7 dias. Connection URL fica no Secrets Manager, consumida tanto pela Lambda Auth quanto pelos pods do EKS.
+
+**New Relic** captura APM, logs (via forwarding nativo do Winston), custom events emitidos pelo `CustomMetricsService` e métricas do cluster via `nri-bundle` Helm chart. 4 dashboards e 3 alertas obrigatórios estão versionados em `docs/observability/`.
+
+## Ordem de provisionamento
+
+1. `repo-infra-db` — cria o RDS, exporta `DATABASE_URL` pro Secrets Manager.
+2. `repo-lambda-auth` — `sam deploy` cria as 2 Lambdas, o SNS Topic e o API Gateway.
+3. `repo-infra-k8s` — `terraform apply` cria VPC, EKS, ECR e os recursos K8s (namespace, configmap, secret, deployment, service, HPA). Também adiciona as rotas HTTP no API Gateway existente.
+4. `repo-app` — push em `main` dispara o CI/CD: build, test, push pro ECR e `kubectl apply` no cluster.
+
+## Segurança
+
+Tráfego cliente → API Gateway é HTTPS. API Gateway → Lambda usa integração nativa AWS (mesma conta). API Gateway → NLB do EKS é HTTP integration. Lambda → RDS e pods → RDS rodam dentro da VPC com security group restrito à porta 5432. Os pods chamam a Lambda Notify via HTTPS público pelo API Gateway (fire-and-forget).

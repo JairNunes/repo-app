@@ -1,88 +1,54 @@
-# Observabilidade — New Relic
+# Observabilidade
 
-Toda a observabilidade da Fase 3 está em **New Relic** (free tier 100GB/mês). Esta pasta contém:
+A observabilidade do projeto roda em New Relic (free tier de 100GB/mês). Esse diretório tem:
 
-- [`dashboards/`](dashboards/) — JSON dos dashboards (importáveis via UI ou Terraform `newrelic_one_dashboard`)
-- [`alerts/`](alerts/) — Definição YAML dos 3 alertas obrigatórios
-- [`nrql/`](nrql/) — Queries NRQL avulsas para investigação
-- [`k8s-integration.md`](k8s-integration.md) — Instalação do `nri-bundle` Helm chart
+- `dashboards/` — JSONs dos 4 dashboards (importáveis pela UI ou por Terraform `newrelic_one_dashboard`).
+- `alerts/` — 3 alertas em YAML.
+- `nrql/queries.md` — queries soltas pra investigação.
+- `k8s-integration.md` — instalação do `nri-bundle`.
 
-## Componentes ativos
+## O que tá ligado
 
-### 1. APM Agent (Node.js)
+**APM agent (Node.js).** Package `newrelic` 11.x. Configuração em `newrelic.js` na raiz da app. Bootstrap via `node -r newrelic dist/src/main` (Dockerfile e script `start:prod`). License key vem da env `NEW_RELIC_LICENSE_KEY`.
 
-- Package: `newrelic` (11.x)
-- Configuração: [`newrelic.js`](../../newrelic.js) na raiz do projeto
-- Bootstrap: `node -r newrelic dist/src/main` (Dockerfile + `start:prod` script)
-- License key via env `NEW_RELIC_LICENSE_KEY` (injetada pelo K8s Secret)
+**Logs em forwarding.** Habilitado em `newrelic.js` (`application_logging.forwarding.enabled`). Os logs JSON do Winston caem no NR Logs com `correlationId`, `userId`, `userType`, `responseTime`, `statusCode`, `method` e `path` — searchable.
 
-### 2. Logs em Forwarding (application_logging)
+**Custom events.** Emitidos pelo `CustomMetricsService`:
 
-Habilitado no `newrelic.js` (`application_logging.forwarding.enabled: true`). Os logs JSON do Winston são enviados automaticamente ao New Relic Logs com:
+- `ServiceOrderCreated` — no `CreateServiceOrderUseCase`.
+- `ServiceOrderStatusChanged` — em cada transição de status.
+- `AuthenticationSuccess` / `AuthenticationFailure` — no login admin e no fluxo da Lambda Auth.
+- `ServiceOrderError` — no exception filter quando explode algo da OS.
 
-- `correlationId` → searchable em todas requests
-- `userId`, `userType` (admin/customer) → quando autenticado
-- `responseTime`, `statusCode`, `method`, `path` → via `HttpLoggerMiddleware`
+**K8s integration.** `nri-bundle` Helm chart cobre nodes, pods, eventos do cluster e logs dos containers via Fluent Bit. Setup em `k8s-integration.md`.
 
-### 3. Custom Events
+**Deployment markers.** O job `deploy-eks` do CI/CD bate na API do New Relic ao final do deploy pra marcar a release. Permite correlacionar regressão com deploy específico no APM.
 
-Emitidos por [`CustomMetricsService`](../../src/shared/observability/custom-metrics.service.ts):
+## Dashboards
 
-| Evento | Onde | Atributos |
-|---|---|---|
-| `ServiceOrderCreated` | `CreateServiceOrderUseCase` | `serviceOrderId`, `customerId`, `status`, `totalCents` |
-| `ServiceOrderStatusChanged` | Use-cases de transição | `serviceOrderId`, `fromStatus`, `toStatus`, `durationMinutes?` |
-| `AuthenticationSuccess` | `AuthService.login` | `userId`, `type` (admin/customer) |
-| `AuthenticationFailure` | `AuthService.login` (catch) | `reason`, `type` |
-| `ServiceOrderError` | global error filter | `serviceOrderId?`, `operation`, `error` |
+| Dashboard | Arquivo |
+|---|---|
+| Volume de OS | `dashboards/01-volume-os.json` |
+| Tempo médio por status | `dashboards/02-tempo-por-status.json` |
+| Erros e falhas | `dashboards/03-erros-e-falhas.json` |
+| Recursos K8s | `dashboards/04-recursos-k8s.json` |
 
-### 4. K8s Integration
-
-Instalada via `nri-bundle` Helm chart (ver [`k8s-integration.md`](k8s-integration.md)). Cobre:
-
-- CPU e memória dos **nodes** (workers EKS)
-- CPU e memória dos **pods** (HPA visualizável)
-- Eventos do cluster (rollouts, restarts)
-- Logs dos containers (stdout/stderr → New Relic Logs)
-
-### 5. Deployment Markers
-
-A pipeline CI/CD (`deploy-eks` job) faz POST para a API do New Relic ao final do deploy:
-
-```
-POST https://api.newrelic.com/v2/applications/{NEW_RELIC_APP_ID}/deployments.json
-```
-
-Marca a release no APM permitindo correlacionar regressão com deploy específico.
-
-## Dashboards obrigatórios
-
-| Dashboard | Arquivo | NRQL principal |
-|---|---|---|
-| Volume de OS | [dashboards/01-volume-os.json](dashboards/01-volume-os.json) | `SELECT count(*) FROM ServiceOrderCreated FACET dateOf(timestamp) SINCE 30 days ago` |
-| Tempo Médio por Status | [dashboards/02-tempo-por-status.json](dashboards/02-tempo-por-status.json) | `SELECT average(durationMinutes) FROM ServiceOrderStatusChanged FACET fromStatus SINCE 7 days ago` |
-| Erros e Falhas | [dashboards/03-erros-e-falhas.json](dashboards/03-erros-e-falhas.json) | `SELECT count(*) FROM Transaction WHERE httpResponseCode >= 500 TIMESERIES SINCE 24 hours ago` |
-| Recursos K8s | [dashboards/04-recursos-k8s.json](dashboards/04-recursos-k8s.json) | `SELECT average(cpuUsedCores), average(memoryUsedBytes) FROM K8sPodSample WHERE namespace='auto-repair-shop' TIMESERIES` |
-
-## Alertas obrigatórios
+## Alertas
 
 | Alerta | Threshold | Severidade |
 |---|---|---|
-| Falha em OS | `ServiceOrderError` > 0 em 5 min | **Critical** |
-| Latência alta | p95 response time > 2s por 5 min | **Warning** |
-| Health check failed | `/health` retorna != 200 por 2 min (Synthetic monitor) | **Critical** |
+| Falha em OS | `ServiceOrderError` > 0 em 5 min | Critical |
+| Latência alta | p95 > 2s por 5 min | Warning |
+| Health check failed | Synthetic monitor `/health` != 200 por 2 min | Critical |
 
-Definição: [`alerts/`](alerts/).
+Detalhes em `alerts/`.
 
 ## Setup inicial
 
-1. Criar conta em [newrelic.com/signup](https://newrelic.com/signup)
-2. Pegar `License Key` (Settings → API keys → Ingest license)
-3. Pegar `App ID` após primeiro deploy (Explorer → APM → seu app → ID na URL)
-4. Pegar `User API Key` (Settings → API keys → User key) → para Terraform e deployment markers
-5. Configurar GitHub Secrets:
-   - `NEW_RELIC_LICENSE_KEY`
-   - `NEW_RELIC_API_KEY` (User key)
-   - `NEW_RELIC_APP_ID`
-6. Importar dashboards via UI (Dashboards → Import → JSON)
-7. Criar alertas (Alerts → Policies → New Policy → seguir [`alerts/`](alerts/))
+1. Conta em newrelic.com/signup.
+2. License Key (Settings → API keys → Ingest license).
+3. User API Key (Settings → API keys → User key).
+4. Depois do primeiro deploy: App ID (Explorer → APM → app → URL).
+5. GitHub Secrets em cada repo: `NEW_RELIC_LICENSE_KEY`, `NEW_RELIC_API_KEY`, `NEW_RELIC_APP_ID`.
+6. Importar os 4 dashboards (Dashboards → Import → JSON).
+7. Criar os alertas seguindo `alerts/`.

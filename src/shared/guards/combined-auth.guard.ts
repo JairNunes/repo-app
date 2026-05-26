@@ -12,12 +12,6 @@ import { correlationStorage } from '../logging/correlation-id';
 export const ALLOW_USER_TYPES_KEY = 'allowUserTypes';
 export type UserType = 'admin' | 'customer';
 
-/**
- * Decorator pra liberar uma rota pra tipos específicos de JWT.
- * Ex.: @AllowUserTypes('admin', 'customer') libera ambas as auths
- *      @AllowUserTypes('customer') libera só customer (CPF via Lambda)
- * Default (sem decorator) = só admin.
- */
 export const AllowUserTypes = (...types: UserType[]) =>
   SetMetadata(ALLOW_USER_TYPES_KEY, types);
 

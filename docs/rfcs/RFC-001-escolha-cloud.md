@@ -1,101 +1,31 @@
-# RFC-001 — Escolha do provedor cloud
+# RFC-001 — Escolha da nuvem
 
-| Campo | Valor |
-|---|---|
-| **Status** | Aceita |
-| **Data** | 2026-05 |
-| **Autor** | Jair Nunes — Grupo 72 |
-| **Decisores** | Jair Nunes |
+Status: aceita
+Data: 05/2026
+Autor: Jair Nunes
 
 ## Contexto
 
-O Tech Challenge Fase 3 exige migrar o monorepo da Fase 2 para arquitetura cloud-native com 4 componentes mandatórios:
+A Fase 3 obriga sair do monorepo da Fase 2 pra uma arquitetura cloud com 4 componentes não-negociáveis: function serverless pra autenticar por CPF, API Gateway na frente, banco gerenciado (não pode mais ser pod no cluster), cluster Kubernetes com HPA e ferramenta de observabilidade (Datadog ou New Relic). Precisa decidir em qual nuvem rodar.
 
-1. **Function Serverless** para autenticação por CPF
-2. **API Gateway** como ponto único de entrada
-3. **Banco gerenciado** (não pode mais ser pod no cluster)
-4. **Cluster Kubernetes** com HPA
-5. **Ferramenta de observabilidade** (Datadog ou New Relic)
+## Opções consideradas
 
-Como o projeto é acadêmico (estudante), o critério "free tier mais documentado e completo" tem peso.
+**AWS.** Lambda, API Gateway HTTP API, RDS PostgreSQL e EKS. Free tier cobre Lambda (1M req/mês), API Gateway (1M chamadas/mês) e RDS db.t2.micro nos 12 meses iniciais. EKS control plane não tem free tier — sangra ~US$73/mês.
 
-## Alternativas
+**GCP.** Cloud Functions, API Gateway, Cloud SQL e GKE Autopilot. Crédito de US$300 por 90 dias. Autopilot tem 1 cluster zonal grátis, o que mata o problema do control plane.
 
-### A. AWS
-
-| Aspecto | Detalhe |
-|---|---|
-| Function Serverless | Lambda (Node.js 20 nativo) |
-| API Gateway | AWS API Gateway HTTP API |
-| Banco | RDS PostgreSQL |
-| K8s | EKS |
-| Free tier Lambda | 1M req/mês + 400.000 GB-s |
-| Free tier API GW | 1M chamadas/mês |
-| Free tier RDS | 750h `db.t2.micro` (primeiros 12 meses) |
-| Free tier EKS | ❌ control plane US$73/mês |
-| IaC suportado | Terraform, CDK, SAM |
-
-### B. Google Cloud Platform
-
-| Aspecto | Detalhe |
-|---|---|
-| Function Serverless | Cloud Functions |
-| API Gateway | API Gateway |
-| Banco | Cloud SQL PostgreSQL |
-| K8s | GKE (Autopilot ou Standard) |
-| Free tier | $300 crédito por 90 dias |
-| Autopilot | Free tier 1 cluster zonal |
-| IaC suportado | Terraform, gcloud |
-
-### C. Azure
-
-| Aspecto | Detalhe |
-|---|---|
-| Function Serverless | Azure Functions |
-| API Gateway | API Management |
-| Banco | Azure Database for PostgreSQL |
-| K8s | AKS (control plane gratuito!) |
-| Free tier | $200 crédito por 30 dias |
-| IaC suportado | Terraform, Bicep |
+**Azure.** Functions, API Management, Database for PostgreSQL e AKS. AKS control plane é gratuito de fato. Crédito de US$200 por 30 dias.
 
 ## Decisão
 
-**Escolhido: AWS.**
+AWS, na região `us-east-1`. Os motivos foram pragmáticos:
 
-### Motivos
+A maior parte do material da Pós e dos tutoriais que consultei usa AWS — isso reduz o tempo de pesquisa quando trava em algo específico. SAM (Serverless Application Model) deixa o setup Lambda + API Gateway com poucas linhas de YAML, sem ter que provisionar cada peça à mão. Já uso AWS no dia a dia, então a curva de aprendizado é zero. New Relic tem integração nativa com Lambda Layer e com EKS via Helm chart, sem fricção.
 
-1. **Familiaridade do autor com a stack AWS.** Maior parte do material da Pós FIAP usa AWS. Reduz tempo de pesquisa.
-2. **Ecossistema Lambda + API Gateway + RDS** é o mais documentado e testado de todos. SAM (Serverless Application Model) acelera o setup.
-3. **Tutoriais e exemplos abundantes** para a combinação exata exigida pelo PDF.
-4. **Compatibilidade com observabilidade:** New Relic tem integração nativa com AWS Lambda Layer e EKS via `nri-bundle` Helm chart.
-5. **CLI maduras:** `aws`, `sam`, `eksctl`, `kubectl` — todas disponíveis e estáveis.
+O ponto negativo é o EKS control plane caro. A estratégia pra contornar isso é simples: subir tudo no dia da gravação do vídeo, gravar, derrubar. O custo total da entrega fica na faixa de US$5-10. AKS gratuito era tentador, mas a economia não compensa o tempo de aprender uma stack que não vou usar depois.
 
-## Trade-offs
-
-### Custo
-
-EKS control plane: **US$0.10/hora ≈ US$73/mês**. Sem free tier. Mitigação:
-
-- **Estratégia "subir, gravar, derrubar":** provisionar a infra completa apenas para gravação do vídeo demonstrativo, depois `terraform destroy`. Custo total da entrega ≈ **US$5-10** se feito em 1 dia.
-- Alternativa considerada: usar **Azure AKS** (control plane grátis) ou **GCP GKE Autopilot** (grátis num cluster zonal). Rejeitada porque a curva de aprendizado das outras clouds atrasaria a entrega.
-
-### Cold start de Lambda
-
-Node.js Lambda em VPC tem cold start típico de 1-3s. Para um app acadêmico, é aceitável. Mitigação: provisioned concurrency (paga extra) — não usada.
-
-### Vendor lock-in
-
-Uso intensivo de Lambda, API Gateway, RDS e EKS. Migrar para outra cloud exigiria reescrever IaC e SAM template. Aceitável dado escopo.
+Cold start de Lambda Node.js em VPC fica entre 1-3 segundos. Em projeto acadêmico isso é aceitável — não vou pagar provisioned concurrency.
 
 ## Consequências
 
-- 4 repos provisionados em **us-east-1** (região mais barata + mais free tier).
-- Terraform usado para RDS e EKS; SAM para Lambdas + API Gateway.
-- ECR substitui artifact local de imagem Docker (Fase 2 usava `actions/upload-artifact`).
-- Credenciais via OIDC (preferível) ou GitHub Secrets `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`.
-
-## Referências
-
-- [AWS Free Tier](https://aws.amazon.com/free/)
-- [SAM Specification](https://docs.aws.amazon.com/serverless-application-model/)
-- [EKS Pricing](https://aws.amazon.com/eks/pricing/)
+Os 4 repos provisionam em `us-east-1`. Terraform cuida do RDS e do EKS, SAM cuida das Lambdas e do API Gateway. ECR substitui o `actions/upload-artifact` que a Fase 2 usava pra distribuir a imagem Docker. Credenciais AWS entram via GitHub Secrets (`AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY`); OIDC seria mais limpo mas pra escopo acadêmico não compensa.
