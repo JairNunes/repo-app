@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: auto-repair-shop
+data:
+  PORT: "3000"
+  JWT_EXPIRES_IN: "24h"
+  NODE_ENV: "production"

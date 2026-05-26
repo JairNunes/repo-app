@@ -1,0 +1,659 @@
+{
+  "info": {
+    "name": "Auto Repair Shop API - Fase 2",
+    "description": "Collection completa para a API de oficina mecânica - Tech Challenge Fase 2 (14SOAT)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:3000" },
+    { "key": "token", "value": "" },
+    { "key": "customer_id", "value": "" },
+    { "key": "vehicle_id", "value": "" },
+    { "key": "service_id", "value": "" },
+    { "key": "part_id", "value": "" },
+    { "key": "order_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01. Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201 || pm.response.code === 200) {",
+                  "  var json = pm.response.json();",
+                  "  pm.collectionVariables.set('token', json.access_token);",
+                  "  pm.test('Token saved', function() { pm.expect(json.access_token).to.be.a('string'); });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@oficina.com\",\n  \"password\": \"Oficina@2024\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02. Services (Serviços)",
+      "item": [
+        {
+          "name": "List All Services",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/services", "host": ["{{base_url}}"], "path": ["admin", "services"] }
+          }
+        },
+        {
+          "name": "Create Service",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var json = pm.response.json();",
+                  "  pm.collectionVariables.set('service_id', json.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Troca de Pneus\",\n  \"priceCents\": 20000\n}"
+            },
+            "url": { "raw": "{{base_url}}/admin/services", "host": ["{{base_url}}"], "path": ["admin", "services"] }
+          }
+        },
+        {
+          "name": "Get Service by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/services/{{service_id}}", "host": ["{{base_url}}"], "path": ["admin", "services", "{{service_id}}"] }
+          }
+        },
+        {
+          "name": "Update Service",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Troca de Pneus (4 unidades)\",\n  \"priceCents\": 24000\n}"
+            },
+            "url": { "raw": "{{base_url}}/admin/services/{{service_id}}", "host": ["{{base_url}}"], "path": ["admin", "services", "{{service_id}}"] }
+          }
+        },
+        {
+          "name": "Delete Service",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/services/{{service_id}}", "host": ["{{base_url}}"], "path": ["admin", "services", "{{service_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03. Parts (Peças)",
+      "item": [
+        {
+          "name": "List All Parts",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/parts", "host": ["{{base_url}}"], "path": ["admin", "parts"] }
+          }
+        },
+        {
+          "name": "Create Part",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var json = pm.response.json();",
+                  "  pm.collectionVariables.set('part_id', json.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Pneu Aro 15 (unidade)\",\n  \"priceCents\": 35000,\n  \"stockQuantity\": 20\n}"
+            },
+            "url": { "raw": "{{base_url}}/admin/parts", "host": ["{{base_url}}"], "path": ["admin", "parts"] }
+          }
+        },
+        {
+          "name": "Get Part by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/parts/{{part_id}}", "host": ["{{base_url}}"], "path": ["admin", "parts", "{{part_id}}"] }
+          }
+        },
+        {
+          "name": "Update Part",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priceCents\": 32000,\n  \"stockQuantity\": 16\n}"
+            },
+            "url": { "raw": "{{base_url}}/admin/parts/{{part_id}}", "host": ["{{base_url}}"], "path": ["admin", "parts", "{{part_id}}"] }
+          }
+        },
+        {
+          "name": "Delete Part",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/parts/{{part_id}}", "host": ["{{base_url}}"], "path": ["admin", "parts", "{{part_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04. Customers (Clientes)",
+      "item": [
+        {
+          "name": "List All Customers",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/customers", "host": ["{{base_url}}"], "path": ["admin", "customers"] }
+          }
+        },
+        {
+          "name": "Create Customer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var json = pm.response.json();",
+                  "  pm.collectionVariables.set('customer_id', json.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ana Costa\",\n  \"document\": \"55566677788\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/admin/customers", "host": ["{{base_url}}"], "path": ["admin", "customers"] }
+          }
+        },
+        {
+          "name": "Get Customer by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/customers/{{customer_id}}", "host": ["{{base_url}}"], "path": ["admin", "customers", "{{customer_id}}"] }
+          }
+        },
+        {
+          "name": "Update Customer",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ana Costa Santos\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/admin/customers/{{customer_id}}", "host": ["{{base_url}}"], "path": ["admin", "customers", "{{customer_id}}"] }
+          }
+        },
+        {
+          "name": "Delete Customer",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/customers/{{customer_id}}", "host": ["{{base_url}}"], "path": ["admin", "customers", "{{customer_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05. Vehicles (Veículos)",
+      "item": [
+        {
+          "name": "List All Vehicles",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/vehicles", "host": ["{{base_url}}"], "path": ["admin", "vehicles"] }
+          }
+        },
+        {
+          "name": "Create Vehicle",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var json = pm.response.json();",
+                  "  pm.collectionVariables.set('vehicle_id', json.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerId\": \"{{customer_id}}\",\n  \"plate\": \"NEW1A00\",\n  \"make\": \"Hyundai\",\n  \"model\": \"HB20\",\n  \"year\": 2024\n}"
+            },
+            "url": { "raw": "{{base_url}}/admin/vehicles", "host": ["{{base_url}}"], "path": ["admin", "vehicles"] }
+          }
+        },
+        {
+          "name": "Get Vehicle by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/vehicles/{{vehicle_id}}", "host": ["{{base_url}}"], "path": ["admin", "vehicles", "{{vehicle_id}}"] }
+          }
+        },
+        {
+          "name": "Update Vehicle",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"HB20S\",\n  \"year\": 2025\n}"
+            },
+            "url": { "raw": "{{base_url}}/admin/vehicles/{{vehicle_id}}", "host": ["{{base_url}}"], "path": ["admin", "vehicles", "{{vehicle_id}}"] }
+          }
+        },
+        {
+          "name": "Delete Vehicle",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/vehicles/{{vehicle_id}}", "host": ["{{base_url}}"], "path": ["admin", "vehicles", "{{vehicle_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "06. Service Orders - Admin",
+      "item": [
+        {
+          "name": "List Active Orders",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders", "host": ["{{base_url}}"], "path": ["admin", "service-orders"] }
+          }
+        },
+        {
+          "name": "List ALL Orders",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders/all", "host": ["{{base_url}}"], "path": ["admin", "service-orders", "all"] }
+          }
+        },
+        {
+          "name": "Create Service Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  var json = pm.response.json();",
+                  "  pm.collectionVariables.set('order_id', json.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerDocument\": \"12345678901\",\n  \"customerName\": \"João da Silva\",\n  \"vehicle\": {\n    \"plate\": \"ABC1D23\",\n    \"make\": \"Toyota\",\n    \"model\": \"Corolla\",\n    \"year\": 2022\n  },\n  \"serviceIds\": [\n    { \"serviceId\": \"REPLACE_WITH_SERVICE_ID\", \"quantity\": 1 }\n  ],\n  \"partIds\": [\n    { \"partId\": \"REPLACE_WITH_PART_ID\", \"quantity\": 1 }\n  ]\n}"
+            },
+            "url": { "raw": "{{base_url}}/admin/service-orders", "host": ["{{base_url}}"], "path": ["admin", "service-orders"] }
+          }
+        },
+        {
+          "name": "Get Order by ID",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders/{{order_id}}", "host": ["{{base_url}}"], "path": ["admin", "service-orders", "{{order_id}}"] }
+          }
+        },
+        {
+          "name": "Start Diagnosis",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders/{{order_id}}/start-diagnosis", "host": ["{{base_url}}"], "path": ["admin", "service-orders", "{{order_id}}", "start-diagnosis"] }
+          }
+        },
+        {
+          "name": "Send for Approval",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders/{{order_id}}/send-for-approval", "host": ["{{base_url}}"], "path": ["admin", "service-orders", "{{order_id}}", "send-for-approval"] }
+          }
+        },
+        {
+          "name": "Approve Quote",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders/{{order_id}}/approve", "host": ["{{base_url}}"], "path": ["admin", "service-orders", "{{order_id}}", "approve"] }
+          }
+        },
+        {
+          "name": "Reject Quote",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders/{{order_id}}/reject", "host": ["{{base_url}}"], "path": ["admin", "service-orders", "{{order_id}}", "reject"] }
+          }
+        },
+        {
+          "name": "Finalize Order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders/{{order_id}}/finalize", "host": ["{{base_url}}"], "path": ["admin", "service-orders", "{{order_id}}", "finalize"] }
+          }
+        },
+        {
+          "name": "Deliver Order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders/{{order_id}}/deliver", "host": ["{{base_url}}"], "path": ["admin", "service-orders", "{{order_id}}", "deliver"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07. Service Orders - Public",
+      "item": [
+        {
+          "name": "Check Order Status (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/service-orders/{{order_id}}/status?customerDocument=12345678901",
+              "host": ["{{base_url}}"],
+              "path": ["service-orders", "{{order_id}}", "status"],
+              "query": [{ "key": "customerDocument", "value": "12345678901" }]
+            }
+          }
+        },
+        {
+          "name": "External Update - Approve (email/webhook)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"approve\",\n  \"source\": \"email\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/service-orders/{{order_id}}/external-update", "host": ["{{base_url}}"], "path": ["service-orders", "{{order_id}}", "external-update"] }
+          }
+        },
+        {
+          "name": "External Update - Reject (email/webhook)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"reject\",\n  \"source\": \"webhook\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/service-orders/{{order_id}}/external-update", "host": ["{{base_url}}"], "path": ["service-orders", "{{order_id}}", "external-update"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "08. Fluxo Completo (Demo Video)",
+      "description": "Execute na ordem: Login → Create OS → Start Diagnosis → Send for Approval → Approve → Finalize → Deliver. Use os IDs retornados em cada step.",
+      "item": [
+        {
+          "name": "Step 1 - Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('token', json.access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@oficina.com\",\n  \"password\": \"Oficina@2024\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] }
+          }
+        },
+        {
+          "name": "Step 2 - List Services (pick IDs)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.length > 0) { pm.collectionVariables.set('service_id', json[0].id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/services", "host": ["{{base_url}}"], "path": ["admin", "services"] }
+          }
+        },
+        {
+          "name": "Step 3 - List Parts (pick IDs)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.length > 0) { pm.collectionVariables.set('part_id', json[0].id); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/parts", "host": ["{{base_url}}"], "path": ["admin", "parts"] }
+          }
+        },
+        {
+          "name": "Step 4 - Create OS (Received)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "pm.collectionVariables.set('order_id', json.id);"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var serviceId = pm.collectionVariables.get('service_id');",
+                  "var partId = pm.collectionVariables.get('part_id');",
+                  "var body = {",
+                  "  customerDocument: '12345678901',",
+                  "  customerName: 'João da Silva',",
+                  "  vehicle: { plate: 'TST1X99', make: 'Chevrolet', model: 'Onix', year: 2024 },",
+                  "  serviceIds: [{ serviceId: serviceId, quantity: 1 }],",
+                  "  partIds: [{ partId: partId, quantity: 2 }]",
+                  "};",
+                  "pm.variables.set('dynamic_body', JSON.stringify(body));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{dynamic_body}}"
+            },
+            "url": { "raw": "{{base_url}}/admin/service-orders", "host": ["{{base_url}}"], "path": ["admin", "service-orders"] }
+          }
+        },
+        {
+          "name": "Step 5 - Start Diagnosis",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders/{{order_id}}/start-diagnosis", "host": ["{{base_url}}"], "path": ["admin", "service-orders", "{{order_id}}", "start-diagnosis"] }
+          }
+        },
+        {
+          "name": "Step 6 - Send for Approval",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders/{{order_id}}/send-for-approval", "host": ["{{base_url}}"], "path": ["admin", "service-orders", "{{order_id}}", "send-for-approval"] }
+          }
+        },
+        {
+          "name": "Step 7a - Approve (via admin)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders/{{order_id}}/approve", "host": ["{{base_url}}"], "path": ["admin", "service-orders", "{{order_id}}", "approve"] }
+          }
+        },
+        {
+          "name": "Step 7b - Approve (via external/public)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"approve\",\n  \"source\": \"email\"\n}"
+            },
+            "url": { "raw": "{{base_url}}/service-orders/{{order_id}}/external-update", "host": ["{{base_url}}"], "path": ["service-orders", "{{order_id}}", "external-update"] }
+          }
+        },
+        {
+          "name": "Step 8 - Finalize",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders/{{order_id}}/finalize", "host": ["{{base_url}}"], "path": ["admin", "service-orders", "{{order_id}}", "finalize"] }
+          }
+        },
+        {
+          "name": "Step 9 - Deliver",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": { "raw": "{{base_url}}/admin/service-orders/{{order_id}}/deliver", "host": ["{{base_url}}"], "path": ["admin", "service-orders", "{{order_id}}", "deliver"] }
+          }
+        },
+        {
+          "name": "Step 10 - Check Status (public)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/service-orders/{{order_id}}/status?customerDocument=12345678901",
+              "host": ["{{base_url}}"],
+              "path": ["service-orders", "{{order_id}}", "status"],
+              "query": [{ "key": "customerDocument", "value": "12345678901" }]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
