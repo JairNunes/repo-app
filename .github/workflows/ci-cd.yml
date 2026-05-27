@@ -121,16 +121,16 @@ jobs:
 
       - run: kubectl rollout status deployment/auto-repair-shop-api -n ${{ env.K8S_NAMESPACE }} --timeout=180s
 
-      - if: ${{ secrets.NEW_RELIC_API_KEY != '' }}
+      - env:
+          NR_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+          NR_APP_ID: ${{ secrets.NEW_RELIC_APP_ID }}
+          SHA: ${{ github.sha }}
+          MSG: ${{ github.event.head_commit.message }}
+          ACTOR: ${{ github.actor }}
         run: |
-          curl -X POST "https://api.newrelic.com/v2/applications/${{ secrets.NEW_RELIC_APP_ID }}/deployments.json" \
-            -H "X-Api-Key: ${{ secrets.NEW_RELIC_API_KEY }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "deployment": {
-                "revision": "${{ github.sha }}",
-                "changelog": "${{ github.event.head_commit.message }}",
-                "description": "Deploy via GitHub Actions",
-                "user": "${{ github.actor }}"
-              }
-            }'
+          if [ -n "$NR_API_KEY" ] && [ -n "$NR_APP_ID" ]; then
+            curl -X POST "https://api.newrelic.com/v2/applications/${NR_APP_ID}/deployments.json" \
+              -H "X-Api-Key: ${NR_API_KEY}" \
+              -H "Content-Type: application/json" \
+              -d "{\"deployment\":{\"revision\":\"${SHA}\",\"changelog\":\"${MSG}\",\"description\":\"Deploy via GitHub Actions\",\"user\":\"${ACTOR}\"}}"
+          fi
