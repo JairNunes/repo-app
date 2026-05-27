@@ -3,8 +3,15 @@ kind: Deployment
 metadata:
   name: auto-repair-shop-api
   namespace: auto-repair-shop
+  labels:
+    app: auto-repair-shop-api
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: auto-repair-shop-api
@@ -15,10 +22,11 @@ spec:
     spec:
       containers:
         - name: api
-          image: auto-repair-shop-api:latest
-          imagePullPolicy: IfNotPresent
+          image: ${ECR_REPOSITORY_URL}:${IMAGE_TAG}
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
+              name: http
           envFrom:
             - configMapRef:
                 name: app-config
@@ -26,33 +34,41 @@ spec:
                 name: app-secrets
           resources:
             requests:
-              memory: "128Mi"
-              cpu: "100m"
+              memory: "256Mi"
+              cpu: "200m"
             limits:
               memory: "512Mi"
               cpu: "500m"
           readinessProbe:
             httpGet:
-              path: /docs
+              path: /health
               port: 3000
-            initialDelaySeconds: 15
+            initialDelaySeconds: 20
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /docs
+              path: /health
               port: 3000
-            initialDelaySeconds: 30
-            periodSeconds: 15
+            initialDelaySeconds: 40
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: api-service
+  name: auto-repair-shop-api
   namespace: auto-repair-shop
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
 spec:
+  type: LoadBalancer
   selector:
     app: auto-repair-shop-api
   ports:
-    - port: 80
+    - name: http
+      port: 80
       targetPort: 3000
-  type: LoadBalancer
+      protocol: TCP
