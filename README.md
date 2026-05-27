@@ -4,6 +4,20 @@ Tech Challenge Fase 3 — Pós Tech FIAP Software Architecture (13SOAT). Grupo 7
 
 API NestJS de gestão de ordens de serviço de uma oficina mecânica. A Fase 3 transforma o monorepo da Fase 2 numa solução cloud-native AWS com 4 repos: aplicação, lambdas serverless, infra do banco e infra do cluster.
 
+## Arquitetura
+
+![Componentes](diagrams/01-componentes.png)
+
+Esse repo entrega o bloco `EKS Cluster` (pods NestJS rodando atrás do NLB) no diagrama acima. Sequência de abertura de OS:
+
+![Sequência Criar OS](diagrams/03-sequencia-criar-os.png)
+
+Modelo de dados (RDS):
+
+![ER](diagrams/04-er.png)
+
+Os 4 diagramas em drawio (editáveis) estão em [`diagrams/`](diagrams/).
+
 ## Repos da solução
 
 - **repo-app** (esse) — aplicação NestJS, domínio, use-cases, controllers, observabilidade, docs.
