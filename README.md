@@ -1,6 +1,6 @@
 # Auto Repair Shop API — Fase 3
 
-Tech Challenge Fase 3 — Pós Tech FIAP Software Architecture (13SOAT). Grupo 72 — Jair Nunes.
+Tech Challenge Fase 3 — Pós Tech FIAP Software Architecture (13SOAT). Grupo 75 — Jair Nunes.
 
 API NestJS de gestão de ordens de serviço de uma oficina mecânica. A Fase 3 transforma o monorepo da Fase 2 numa solução cloud-native AWS com 4 repos: aplicação, lambdas serverless, infra do banco e infra do cluster.
 
