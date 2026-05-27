@@ -9,6 +9,7 @@ type NewRelicAgent = {
 
 function getNewRelic(): NewRelicAgent | null {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
     return require('newrelic') as NewRelicAgent;
   } catch {
     return null;
