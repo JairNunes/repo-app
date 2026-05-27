@@ -1,0 +1,1 @@
+{"data":{"actor":{"account":{"aiWorkflows":{"workflows":{"entities":[{"destinationConfigurations":[{"channelId":"32e9223a-648b-4394-8974-2ead93201e5e","notificationTriggers":["ACTIVATED","CLOSED"]}],"id":"0d009ed4-72c2-469d-afeb-2625b6728708","name":"oficina-mecanica-workflow","workflowEnabled":true}]}}}}}}
